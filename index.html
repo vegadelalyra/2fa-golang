@@ -1,0 +1,223 @@
+{{define "login"}}
+<!DOCTYPE html>
+<html>
+<head><title>Login</title></head>
+<body style="font-family: sans-serif; display: flex; justify-content: center; margin-top: 50px;">
+    <form action="/" method="GET" style="border: 1px solid #ccc; padding: 20px; border-radius: 8px;">
+        <h3>Login to Wallet</h3>
+        <input type="text" name="username" placeholder="Enter Username" required style="padding: 8px;">
+        <button type="submit" style="padding: 8px; background: #007bff; color: white; border: none; cursor: pointer;">Login</button>
+    </form>
+</body>
+</html>
+{{end}}
+
+{{define "dashboard"}}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wallet Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .card { border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; margin-top: 5px; }
+        .btn-blue { background: #007bff; }
+        .btn-green { background: #28a745; }
+        .btn-red { background: #dc3545; }
+        .btn-outline { background: #fff; border: 1px solid #ccc; color: #333; }
+        
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 100px; }
+        code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: monospace; }
+        
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 10px; text-align: center; max-width: 90%; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .hidden { display: none !important; } 
+    </style>
+</head>
+<body>
+    <h2>Welcome, {{.Name}}</h2>
+    <a href="/logout">Logout</a>
+
+    <div class="card">
+        <h3>1. Security Setup</h3>
+
+        <h4>Authenticator App (TOTP)</h4>
+        {{if .TOTPEnabled}}
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <p style="color: green; font-weight: bold; margin: 0;">✅ 2FA Active</p>
+                <!-- NEW DISABLE BUTTON -->
+                <button class="btn btn-red" style="font-size: 0.8em; padding: 5px 10px;" onclick="openDisableModal()">Disable / Reset</button>
+            </div>
+            <p style="font-size: 0.8em; color: #666; margin-top: 5px;">Lost your device? Click Disable above to reset.</p>
+        {{else}}
+            <p>Not set up yet.</p>
+            <button class="btn btn-blue" onclick="showTOTPSetup()">+ Setup Authenticator</button>
+        {{end}}
+        
+        <!-- TOTP Setup Area (Hidden by default) -->
+        <div id="totp-setup" class="hidden" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+            <p>1. Scan QR or tap button below:</p>
+            <img id="qr-img" width="150" /><br/>
+            
+            <a id="deep-link" href="#" class="btn btn-blue" style="display:inline-block; text-decoration:none; margin-bottom: 10px;">
+                Tap to Open Authenticator App
+            </a>
+
+            <p style="font-size: 0.9em;">Can't scan? Copy this secret:<br/>
+            <code id="secret-text"></code> <button onclick="copySecret()">Copy</button></p>
+
+            <p>2. Enter Code to Verify:</p>
+            <input type="text" id="verify-code" placeholder="123456" maxlength="6">
+            <button class="btn btn-green" onclick="verifyTOTPSetup()">Enable 2FA</button>
+        </div>
+    </div>
+
+    <div class="card" style="background-color: #f9fff9; border-color: #28a745;">
+        <h3>2. Make Withdrawal</h3>
+        <p>Send $500 to External Bank?</p>
+        {{if .TOTPEnabled}}
+            <button class="btn btn-green" style="font-size: 1.2em; width: 100%;" onclick="startWithdrawal()">CONFIRM WITHDRAWAL</button>
+        {{else}}
+             <button class="btn btn-red" style="font-size: 1.2em; width: 100%; opacity: 0.6;" disabled>SETUP SECURITY FIRST</button>
+        {{end}}
+    </div>
+
+    <!-- 1. WITHDRAWAL Modal -->
+    <div id="auth-modal" class="hidden modal">
+        <div class="modal-content">
+            <h3>Authorize Withdrawal</h3>
+            <div id="fallback-area">
+                <p><strong>Enter Authenticator Code:</strong></p>
+                <input type="text" id="withdraw-code" placeholder="000000" style="font-size: 1.5em; width: 150px; text-align: center;">
+                <br/><br/>
+                <button class="btn btn-blue" onclick="submitWithdrawTOTP()">Verify Code</button>
+            </div>
+            <br/>
+            <button class="btn btn-red" onclick="closeModal('auth-modal')">Cancel</button>
+        </div>
+    </div>
+
+    <!-- 2. DISABLE 2FA Modal -->
+    <div id="disable-modal" class="hidden modal">
+        <div class="modal-content" style="border: 2px solid #dc3545;">
+            <h3 style="color: #dc3545;">Disable 2FA?</h3>
+            <p>Please confirm your password to continue.</p>
+            <p style="font-size: 0.8em; color: #666;">(For this demo, password = username)</p>
+            
+            <input type="password" id="disable-password" placeholder="Password" style="font-size: 1.2em; width: 180px; text-align: center;">
+            <br/><br/>
+            
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="btn btn-outline" onclick="closeModal('disable-modal')">Cancel</button>
+                <button class="btn btn-red" onclick="submitDisableTOTP()">Confirm Disable</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log("App Loaded. 2FA Status: {{.TOTPEnabled}}");
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+            
+            // Clear inputs based on modal
+            if(modalId === 'auth-modal') document.getElementById('withdraw-code').value = "";
+            if(modalId === 'disable-modal') document.getElementById('disable-password').value = "";
+        }
+
+        // --- DISABLE TOTP FLOW ---
+        function openDisableModal() {
+            const modal = document.getElementById('disable-modal');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+            setTimeout(() => document.getElementById('disable-password').focus(), 100);
+        }
+
+        async function submitDisableTOTP() {
+            const password = document.getElementById('disable-password').value;
+            console.log("Submitting disable request...");
+            
+            const res = await fetch('/api/totp/disable', { 
+                method: 'POST',
+                body: JSON.stringify({ password: password }) 
+            });
+            
+            if (res.ok) {
+                alert("2FA Disabled. You can now setup a new device.");
+                location.reload();
+            } else {
+                alert("Incorrect Password!");
+            }
+        }
+
+        // --- TOTP SETUP ---
+        let currentSecret = "";
+
+        async function showTOTPSetup() {
+            console.log("Generating TOTP secret...");
+            const res = await fetch('/api/totp/generate', { method: 'POST' });
+            const data = await res.json();
+            
+            console.log("Secret received:", data.secret);
+            document.getElementById('totp-setup').classList.remove('hidden');
+            document.getElementById('qr-img').src = data.qr;
+            document.getElementById('secret-text').innerText = data.secret;
+            document.getElementById('deep-link').href = data.url;
+            currentSecret = data.secret;
+        }
+
+        function copySecret() {
+            navigator.clipboard.writeText(currentSecret);
+            alert("Secret copied!");
+        }
+
+        async function verifyTOTPSetup() {
+            const code = document.getElementById('verify-code').value;
+            console.log("Verifying setup code:", code);
+            
+            const res = await fetch('/api/totp/validate', {
+                method: 'POST', body: JSON.stringify({ secret: currentSecret, code: code })
+            });
+            if (res.ok) {
+                console.log("Setup verification passed.");
+                alert("2FA Enabled Successfully!");
+                location.reload();
+            } else {
+                console.error("Setup verification failed.");
+                alert("Invalid Code. Try again.");
+            }
+        }
+
+        // --- WITHDRAWAL FLOW ---
+        function startWithdrawal() {
+            console.log("Opening withdrawal modal...");
+            const modal = document.getElementById('auth-modal');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex'; 
+            setTimeout(() => document.getElementById('withdraw-code').focus(), 100);
+        }
+
+        async function submitWithdrawTOTP() {
+            const code = document.getElementById('withdraw-code').value;
+            console.log("Submitting withdrawal code:", code);
+            
+            const res = await fetch('/api/withdraw/totp', {
+                method: 'POST', body: JSON.stringify({ code: code })
+            });
+
+            if (res.ok) {
+                console.log("Withdrawal approved!");
+                alert("Withdrawal SUCCESS via Code!");
+                closeModal('auth-modal');
+            } else {
+                console.error("Withdrawal rejected.");
+                alert("Invalid Code!");
+            }
+        }
+    </script>
+</body>
+</html>
+{{end}}
